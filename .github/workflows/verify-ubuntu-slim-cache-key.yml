@@ -62,3 +62,10 @@ jobs:
     uses: actions/reusable-workflows/.github/workflows/check-dist.yml@main
     with:
       node-version: '24.x'
+
+  basic-validation:
+    name: Basic validation
+    uses: actions/reusable-workflows/.github/workflows/basic-validation.yml@main
+    with:
+      node-version: '24.x'
+      enable-audit: false
