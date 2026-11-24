@@ -1,0 +1,64 @@
+name: Verify Ubuntu slim Go caching
+
+on:
+  push:
+    branches:
+      - verify-ubuntu-slim-cache-key
+
+permissions:
+  contents: read
+
+jobs:
+  cold:
+    name: Ubuntu slim cold cache
+    runs-on: ubuntu-slim
+    steps: &repro_steps
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Show runner metadata and create Go fixture
+        shell: bash
+        run: |
+          printf 'RUNNER_OS=%s\nRUNNER_ARCH=%s\n' "$RUNNER_OS" "$RUNNER_ARCH"
+          printf 'ImageOS=%q\n' "${ImageOS-<unset>}"
+          cat /etc/os-release
+
+          mkdir -p issue-820
+          printf 'module example.com/issue820/run%s/attempt%s\n\ngo 1.27.4\n' \
+            "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" > issue-820/go.mod
+          printf 'package repro\n' > issue-820/repro.go
+      - name: Set up Go and restore cache
+        uses: ./
+        id: setup-go
+        with:
+          go-version-file: issue-820/go.mod
+          cache-dependency-path: issue-820/go.mod
+          cache: true
+      - name: Show cache result and populate build cache
+        shell: bash
+        env:
+          CACHE_HIT: ${{ steps.setup-go.outputs.cache-hit }}
+        run: |
+          printf 'setup-go cache-hit=%q\n' "$CACHE_HIT"
+          printf 'setup-go cache-hit for %s: `%s`\n' "$GITHUB_JOB" "$CACHE_HIT" >> "$GITHUB_STEP_SUMMARY"
+          go version
+          mkdir -p "$(go env GOMODCACHE)"
+          go -C issue-820 test ./...
+
+  warm:
+    name: Ubuntu slim warm cache
+    runs-on: ubuntu-slim
+    needs: cold
+    steps: *repro_steps
+
+  standard:
+    name: Standard Ubuntu 24.04 cache
+    runs-on: ubuntu-24.04
+    needs: warm
+    steps: *repro_steps
+
+  check-dist:
+    name: Check bundled action
+    uses: actions/reusable-workflows/.github/workflows/check-dist.yml@main
+    with:
+      node-version: '24.x'
